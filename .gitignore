@@ -1,10 +1,11 @@
-# virtual enviroment
-/venv
-
-# config
-config.py
-config copy.json
-
-# pycharm
-.idea
-__pycache__
+.venv/
+venv/
+.local/
+__pycache__/
+*.py[cod]
+config.local.json
+build/
+dist/
+*.spec
+*.zip
+.idea/
