@@ -11,7 +11,7 @@ import webbrowser
 from login_helper import (AUTH_PATH, load_authorization, login_and_update_config,
                           send_phone_code, phone_login)
 from monitor import (AutoDL, CONFIG_PATH, JOURNAL, LOCAL, ROOT, Monitor,
-                     atomic_json, load_config, validate_config)
+                     atomic_json, load_config, validate_config, clone_source, GIB)
 
 
 class App:
@@ -167,6 +167,12 @@ def make_handler(app):
                         labels = {'running': '运行中', 'shutdown': '已关机', 'starting': '开机中'}
                         size = row.get('expand_data_disk_size', 0) / 1024 ** 3
                         return self.send({'message': f"原实例：{labels.get(row['status'], row['status'])} · {row.get('req_gpu_amount', '?')} 张卡 · 已扩容 {size:g} GB · {row.get('payg_price', 0)/1000:g} 元/小时"})
+                    if self.path == '/api/clone/inspect':
+                        c = validate_config(raw)
+                        if c['creation_method'] != 'clone':
+                            raise ValueError('请先选择克隆已有实例')
+                        source = clone_source(AutoDL(), c)
+                        return self.send({'message': f"克隆源已关机 · 地区 {source['region']} · 已扩容 {source['disk_bytes']/GIB:g} GB · {source['chip_corp']} / {source['cpu_arch']}；配置符合检查条件"})
                     if self.path == '/api/reset-order':
                         if app.monitor.snapshot()['active']:
                             raise ValueError('请先停止抢卡')
