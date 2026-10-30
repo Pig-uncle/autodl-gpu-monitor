@@ -91,5 +91,28 @@ class BillingTests(unittest.TestCase):
  def test_payg_payload_unchanged(self):
   c={**self.c,'billing_type':'payg','billing_duration':1};p=m.create_payload(c,'m1',2)
   self.assertEqual(p['instance_info']['charge_type'],'payg');self.assertEqual(p['price_info']['duration'],1)
+ def test_stock_changed_error_retries_initial_clone_creation(self):
+  source={'uuid':'source-1','base_image_uuid':'base','private_image_uuid':'','reproduction_uuid':'','reproduction_id':0,'cg_application_uuid':'','cg_application_info':{}}
+  for billing in ('payg','daily'):
+   with self.subTest(billing=billing):
+    c={**self.c,'billing_type':billing,'creation_method':'clone','clone_source_uuid':'source-1'}
+    api=Mock();api.call.side_effect=m.ApiError('MachineGpuNumUpdateFailed','GPU库存发生变更，请刷新后重新选择')
+    with patch.object(m,'clone_source',return_value=source):
+     self.assertFalse(self.worker()._submit_new(api,c,'m1',1,{'state':'submitting'},None,source))
+    self.assertFalse(m.JOURNAL.exists())
+    self.assertEqual(api.call.call_count,1)
+ def test_unknown_error_and_timeout_retain_creation_journal(self):
+  for error in (m.ApiError('OtherFailure','unknown'),requests.Timeout()):
+   with self.subTest(error=type(error).__name__):
+    api=Mock();api.call.side_effect=error
+    with self.assertRaises(type(error)):
+     self.worker()._submit_new(api,self.c,'m1',1,{'state':'submitting'},None)
+    self.assertEqual(json.loads(m.JOURNAL.read_text())['state'],'submitting')
+ def test_payment_stock_error_never_retries_payment(self):
+  a=self.api();a.call.side_effect=[{'uuid':'order-123'},self.detail,m.ApiError('MachineGpuNumUpdateFailed','GPU库存发生变更')]
+  with self.assertRaisesRegex(ValueError,'不会自动重复支付'):
+   self.worker()._submit_new(a,self.c,'m1',1,{},None)
+  self.assertEqual(json.loads(m.JOURNAL.read_text())['state'],'paying')
+  self.assertEqual(a.call.call_count,3)
 
 if __name__=='__main__':unittest.main()

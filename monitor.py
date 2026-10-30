@@ -132,6 +132,8 @@ class ApiError(RuntimeError):
 
 
 def capacity_error(exc):
+    if isinstance(exc, ApiError) and exc.code == 'MachineGpuNumUpdateFailed':
+        return True
     text = str(exc).lower()
     return any(t in text for t in ['gpu不足', 'gpu 不足', '空闲gpu', '空闲 gpu',
         'gpu数量不足', 'gpu 数量不足', '没有足够', '资源不足', '库存不足',
