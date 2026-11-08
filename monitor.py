@@ -715,6 +715,11 @@ class Monitor:
                     latest = clone_source(api, c)
                     if latest != source:
                         raise ValueError('克隆源信息已变化，请重新检查后再开始')
+                # Record only known configuration fields, never credentials. Restoring a
+                # template does not restore an old scheduled start time.
+                order['template'] = {key: copy.deepcopy(c[key]) for key in DEFAULTS if key in c}
+                order['template']['schedule_enabled'] = False
+                order['template']['schedule_at'] = ''
                 atomic_json(JOURNAL, order)
                 with self.lock:
                     self.status['attempts'] += 1

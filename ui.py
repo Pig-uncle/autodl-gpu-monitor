@@ -1,6 +1,8 @@
 """Local-only Chinese control panel. Run with python main.py."""
 import argparse
+import hashlib
 import json
+import re
 import socket
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -12,6 +14,7 @@ from login_helper import (AUTH_PATH, load_authorization, login_and_update_config
                           send_phone_code, phone_login)
 from monitor import (AutoDL, CONFIG_PATH, JOURNAL, LOCAL, ROOT, Monitor,
                      atomic_json, load_config, validate_config, clone_source, GIB)
+from order_history import list_history
 
 
 class App:
@@ -98,6 +101,8 @@ def make_handler(app):
                         'has_order_record': JOURNAL.exists()})
                 if path == '/api/config':
                     return self.send(load_config())
+                if path == '/api/order-history':
+                    return self.send({'records': list_history(LOCAL, JOURNAL)})
                 if path == '/api/account':
                     return self.send(app.account(force='refresh=1' in self.path))
                 if path == '/api/qr' and app.login_status == 'waiting':
@@ -123,6 +128,29 @@ def make_handler(app):
                     raise ValueError('配置格式错误')
                 if self.path == '/api/region-models':
                     return self.send({'models': AutoDL().region_gpu_models(raw.get('regions'))})
+                if self.path == '/api/bills':
+                    page = raw.get('page', 1)
+                    if type(page) is not int or not 1 <= page <= 100000:
+                        raise ValueError('账单页码无效')
+                    data = AutoDL().call('POST', 'bill/list', {
+                        'order_uuid': '', 'sub_name': '', 'date_from': '', 'date_to': '',
+                        'page_index': page, 'page_size': 10, 'bill_type': ''})
+                    if not isinstance(data, dict) or not isinstance(data.get('list'), list):
+                        raise ValueError('平台账单格式异常')
+                    fields = ('created_at', 'bill_type', 'bill_sub_type', 'charge_type',
+                              'asset', 'pay_by_balance', 'pay_by_voucher', 'order_uuid',
+                              'product_uuid', 'runtime_uuid')
+                    bills = [{k: row[k] for k in fields if k in row} for row in data['list'] if isinstance(row, dict)]
+                    return self.send({'bills': bills, 'page': page, 'max_page': data.get('max_page', 0),
+                                      'total': data.get('result_total', 0)})
+                if self.path == '/api/order-history/status':
+                    uuid = raw.get('uuid')
+                    if not isinstance(uuid, str) or not re.fullmatch(r'[A-Za-z0-9_-]{5,100}', uuid):
+                        raise ValueError('记录没有可核对的实例 UUID')
+                    rows = AutoDL().instances()
+                    row = next((item for item in rows if item.get('uuid') == uuid), None)
+                    return self.send({'found': bool(row), 'status': row.get('status') if row else None,
+                                      'start_mode': row.get('start_mode') if row else None})
                 with app.lock:
                     if self.path in {'/api/config', '/api/start'}:
                         if app.monitor.snapshot()['active']:
@@ -179,6 +207,9 @@ def make_handler(app):
                         if app.monitor.snapshot()['active']:
                             raise ValueError('请先停止抢卡')
                         if JOURNAL.exists():
+                            fingerprint = raw.get('fingerprint')
+                            if fingerprint is not None and fingerprint != hashlib.sha256(JOURNAL.read_bytes()).hexdigest():
+                                raise ValueError('订单记录已变化，请刷新后重新核对')
                             # Retain audit history instead of deleting evidence of a paid order.
                             JOURNAL.rename(LOCAL / f'order-archived-{time.time_ns()}.json')
                         return self.send({'ok': True})
