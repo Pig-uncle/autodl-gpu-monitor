@@ -1,6 +1,6 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const h=fs.readFileSync('web/index.html','utf8');
-assert(h.includes('https://www.autodl.com/console/settings/token'));
+assert(h.includes('https://www.autodl.com/console/center/settings/token'));
 const code=h.slice(h.indexOf('async function loadWechat()'),h.indexOf("$('resetOrder').onclick"));
 class E{constructor(){this.value='';this.checked=false;this.disabled=false;this.textContent='';this.listeners={};this.open=false}addEventListener(n,f){this.listeners[n]=f}}
 const els={};const calls=[];const ctx=vm.createContext({$:id=>els[id]||(els[id]=new E()),confirm:()=>false,action:f=>f(),api:async(path,body)=>{calls.push({path,body});return path==='wechat-notification'&&body===undefined?{enabled:true,has_token:true}:{ok:true}}});

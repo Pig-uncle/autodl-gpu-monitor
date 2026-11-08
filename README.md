@@ -38,7 +38,7 @@
 
 ## AutoDL 微信通知
 
-在 AutoDL [账号安全](https://www.autodl.com/console/account/safe)绑定微信，在[开发者 Token 页面](https://www.autodl.com/console/settings/token)获取同一账号的 Token。在控制台“微信通知（AutoDL 官方）”填写、勾选并保存后，可手动发送测试通知。Token 仅保存在本机 `.local/wechat-notification.json`，不要将已登录或已配置的文件夹转发给他人；切换账号后需重新填写对应 Token。
+在 AutoDL [账号安全](https://www.autodl.com/console/center/account/safe)绑定微信，在[开发者 Token 页面](https://www.autodl.com/console/center/settings/token)获取同一账号的 Token。在控制台“微信通知（AutoDL 官方）”填写、勾选并保存后，可手动发送测试通知。Token 仅保存在本机 `.local/wechat-notification.json`，不要将已登录或已配置的文件夹转发给他人；切换账号后需重新填写对应 Token。
 
 通知由 AutoDL 的[官方微信消息接口](https://www.autodl.com/docs/msg/)发送到微信，不是微信扫码登录的凭据。平台文档说明消息由 AutoDL 微信公众号接收，并限制每日及每分钟消息数。仅在实例确认有卡运行时尝试发送；克隆数据盘可能仍在复制，需到控制台核对。通知失败不会重新下单或改变成功状态。
 
