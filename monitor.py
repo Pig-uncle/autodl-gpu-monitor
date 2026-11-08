@@ -13,6 +13,7 @@ import time
 import requests
 
 from login_helper import load_authorization
+import wechat_notify
 
 ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 LOCAL = ROOT / '.local'
@@ -351,6 +352,7 @@ class Monitor:
         self.stop_event = threading.Event()
         self.thread = None
         self.race_done = None
+        self._wechat_attempted = False
         self.status = {'phase': 'idle', 'message': '等待开始', 'attempts': 0,
                        'started_at': None, 'result': None, 'logs': []}
 
@@ -384,6 +386,7 @@ class Monitor:
                 raise ValueError('抢卡正在运行，请先停止后再修改配置')
             self.stop_event.clear()
             self.race_done = None
+            self._wechat_attempted = False
             self.status.update(phase='checking', attempts=0, started_at=time.time(), result=None)
             self.thread = threading.Thread(target=self._run, args=(copy.deepcopy(config),), daemon=True)
             self.thread.start()
@@ -403,9 +406,30 @@ class Monitor:
         with self.lock:
             self.status['result'] = result
             self.status['phase'] = 'success'
+            should_notify = not self._wechat_attempted
+            self._wechat_attempted = True
         self.log(f"成功：实例 {result['uuid']} 已确认 GPU 运行中。抢卡已停止。")
         if result.get('creation_method') == 'clone' and result.get('clone_copy_data'):
             self.log(f"数据盘复制状态：{result.get('clone_copy_status') or '未知'}；请在 AutoDL 控制台核对复制是否完成。")
+        if should_notify:
+            try:
+                settings = wechat_notify.load_settings()
+                if settings['enabled']:
+                    threading.Thread(target=self._notify_success, args=(copy.deepcopy(result), settings), daemon=True).start()
+            except Exception:
+                self.log('微信通知配置无法读取，抢卡结果不受影响。')
+
+    def _notify_success(self, result, settings):
+        try:
+            user = AutoDL().call('GET', 'user/detail')
+            description = '新租或克隆实例' if result.get('source') == 'new' else '已有实例'
+            content = f"实例 {result['uuid']} 已确认 GPU 运行；请到 AutoDL 控制台查看。"
+            if result.get('creation_method') == 'clone' and result.get('clone_copy_data'):
+                content += ' 数据盘复制状态请在控制台确认。'
+            wechat_notify.send_message(settings, user.get('id'), 'GPU 已运行', description, content)
+            self.log('AutoDL 微信通知发送成功；请在微信中查看。')
+        except Exception:
+            self.log('AutoDL 微信通知发送失败，请检查开发者 Token、账号及微信绑定；抢卡结果不受影响。')
 
     def _run(self, c):
         try:

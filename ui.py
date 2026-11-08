@@ -15,6 +15,7 @@ from login_helper import (AUTH_PATH, load_authorization, login_and_update_config
 from monitor import (AutoDL, CONFIG_PATH, JOURNAL, LOCAL, ROOT, Monitor,
                      atomic_json, load_config, validate_config, clone_source, GIB)
 from order_history import list_history
+import wechat_notify
 
 
 class App:
@@ -103,6 +104,9 @@ def make_handler(app):
                     return self.send(load_config())
                 if path == '/api/order-history':
                     return self.send({'records': list_history(LOCAL, JOURNAL)})
+                if path == '/api/wechat-notification':
+                    settings = wechat_notify.load_settings()
+                    return self.send({'enabled': settings['enabled'], 'has_token': bool(settings['token'])})
                 if path == '/api/account':
                     return self.send(app.account(force='refresh=1' in self.path))
                 if path == '/api/qr' and app.login_status == 'waiting':
@@ -151,7 +155,22 @@ def make_handler(app):
                     row = next((item for item in rows if item.get('uuid') == uuid), None)
                     return self.send({'found': bool(row), 'status': row.get('status') if row else None,
                                       'start_mode': row.get('start_mode') if row else None})
+                if self.path == '/api/wechat-notification/test':
+                    settings = wechat_notify.load_settings()
+                    user = AutoDL().call('GET', 'user/detail')
+                    wechat_notify.send_message(settings, user.get('id'), 'AutoDL 通知测试',
+                                               'GPU 监控', '通知配置测试，请查看微信消息。')
+                    return self.send({'ok': True})
                 with app.lock:
+                    if self.path == '/api/wechat-notification':
+                        enabled, token, clear = raw.get('enabled'), raw.get('token', ''), raw.get('clear', False)
+                        if type(enabled) is not bool or type(clear) is not bool or not isinstance(token, str):
+                            raise ValueError('微信通知设置格式错误')
+                        account_id = None
+                        if not clear and (enabled or token.strip()):
+                            account_id = AutoDL().call('GET', 'user/detail').get('id')
+                        wechat_notify.save_settings(enabled, token, account_id, clear)
+                        return self.send({'ok': True})
                     if self.path in {'/api/config', '/api/start'}:
                         if app.monitor.snapshot()['active']:
                             raise ValueError('请先停止抢卡，再保存或启动')
