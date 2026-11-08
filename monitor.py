@@ -196,6 +196,38 @@ class AutoDL:
                 break
             page += 1
 
+    def region_gpu_models(self, regions):
+        """Read the machine catalogue for the selected regions, including full machines."""
+        if not isinstance(regions, list) or not 1 <= len(regions) <= 100 or any(
+            not isinstance(r, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}', r) for r in regions
+        ):
+            raise ValueError('请选择有效的地区代号')
+        regions = list(dict.fromkeys(regions))
+        names = set()
+        page = 1
+        while True:
+            data = self.call('POST', 'user/machine/list', {
+                'charge_type': 'payg', 'default_order': True, 'gpu_idle_num': 0,
+                'gpu_type_name': [], 'region_sign_list': regions,
+                'page_index': page, 'page_size': 100,
+            })
+            if not isinstance(data, dict) or not isinstance(data.get('list'), list):
+                raise ValueError('平台机器目录格式异常')
+            max_page = data.get('max_page')
+            if type(max_page) is not int or not 0 <= max_page <= 10000:
+                raise ValueError('平台机器目录分页异常')
+            rows = data['list']
+            if not rows and page < max_page:
+                raise ValueError('平台机器目录分页不完整，请重试')
+            for row in rows:
+                if isinstance(row, dict) and row.get('region_sign') in regions:
+                    name = row.get('gpu_name')
+                    if isinstance(name, str) and name.strip() and name != 'CPU':
+                        names.add(name)
+            if page >= max_page or not rows:
+                return sorted(names)
+            page += 1
+
     def images(self):
         rows = self.call('POST', 'image/get', {})
         rows = [x for x in rows if not x.get('is_off') and x.get('chip_corp') == 'nvidia'

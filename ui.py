@@ -121,6 +121,8 @@ def make_handler(app):
                 raw = json.loads(self.rfile.read(length) or b'{}')
                 if not isinstance(raw, dict):
                     raise ValueError('配置格式错误')
+                if self.path == '/api/region-models':
+                    return self.send({'models': AutoDL().region_gpu_models(raw.get('regions'))})
                 with app.lock:
                     if self.path in {'/api/config', '/api/start'}:
                         if app.monitor.snapshot()['active']:
